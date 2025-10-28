@@ -21,6 +21,8 @@
 #     https://www.nipreps.org/community/licensing/
 #
 
+import re
+
 import pytest
 
 from nifreeze.utils.iterators import (
@@ -38,40 +40,54 @@ from nifreeze.utils.iterators import (
 
 
 @pytest.mark.parametrize(
-    "values, ascending, expected",
+    "values, ascending, round_decimals, expected",
     [
         # Simple integers
-        ([1, 2, 3], True, [0, 1, 2]),
-        ([1, 2, 3], False, [2, 1, 0]),
+        ([1, 2, 3], True, 2, [0, 1, 2]),
+        ([1, 2, 3], False, 2, [2, 1, 0]),
         # Repeated values
-        ([2, 1, 2, 1], True, [1, 3, 0, 2]),
-        ([2, 1, 2, 1], False, [2, 0, 3, 1]),  # Ties are reversed due to reverse=True
+        ([2, 1, 2, 1], True, 2, [1, 3, 0, 2]),
+        ([2, 1, 2, 1], False, 2, [2, 0, 3, 1]),  # Ties are reversed due to reverse=True
         # Floats
-        ([1.01, 1.02, 0.99], True, [2, 0, 1]),
-        ([1.01, 1.02, 0.99], False, [1, 0, 2]),
+        ([1.01, 1.02, 0.99], True, 2, [2, 0, 1]),
+        ([1.01, 1.02, 0.99], False, 2, [1, 0, 2]),
         # Floats with rounding
         (
             [1.001, 1.002, 0.999],
             True,
+            2,
             [0, 1, 2],
         ),  # All round to 1.00 (round_decimals=2), so original order
         (
             [1.001, 1.002, 0.999],
+            True,
+            4,
+            [2, 0, 1],
+        ),
+        (
+            [1.001, 1.002, 0.999],
             False,
+            2,
             [2, 1, 0],
         ),  # All round to 1.00 (round_decimals=2), ties are reversed due to reverse=True
+        (
+            [1.001, 1.002, 0.999],
+            False,
+            4,
+            [1, 0, 2],
+        ),
         # Negative and positive
-        ([-1.2, 0.0, 3.4, -1.2], True, [0, 3, 1, 2]),
-        ([-1.2, 0.0, 3.4, -1.2], False, [2, 1, 3, 0]),  # Ties are reversed due to reverse=True
+        ([-1.2, 0.0, 3.4, -1.2], True, 2, [0, 3, 1, 2]),
+        ([-1.2, 0.0, 3.4, -1.2], False, 2, [2, 1, 3, 0]),  # Ties are reversed due to reverse=True
     ],
 )
-def test_value_iterator(values, ascending, expected):
-    result = list(_value_iterator(values, ascending=ascending))
+def test_value_iterator(values, ascending, round_decimals, expected):
+    result = list(_value_iterator(values, ascending=ascending, round_decimals=round_decimals))
     assert result == expected
 
 
 def test_linear_iterator_error():
-    with pytest.raises(TypeError, match=ITERATOR_SIZE_ERROR_MSG):
+    with pytest.raises(ValueError, match=re.escape(ITERATOR_SIZE_ERROR_MSG)):
         list(linear_iterator())
 
 
@@ -80,6 +96,7 @@ def test_linear_iterator_error():
     [
         ({"size": 4}, [0, 1, 2, 3]),
         ({"bvals": [0, 1000, 2000, 3000]}, [0, 1, 2, 3]),
+        ({"uptake": [-1.02, -0.56, 0.43, 1.16]}, [0, 1, 2, 3]),
     ],
 )
 def test_linear_iterator(kwargs, expected):
@@ -87,7 +104,7 @@ def test_linear_iterator(kwargs, expected):
 
 
 def test_random_iterator_error():
-    with pytest.raises(TypeError, match=ITERATOR_SIZE_ERROR_MSG):
+    with pytest.raises(ValueError, match=re.escape(ITERATOR_SIZE_ERROR_MSG)):
         list(random_iterator())
 
 
@@ -96,6 +113,7 @@ def test_random_iterator_error():
     [
         ({"size": 5, "seed": 1234}, [1, 2, 4, 0, 3]),
         ({"bvals": [0, 1000, 2000, 3000], "seed": 42}, [2, 1, 3, 0]),
+        ({"uptake": [-1.02, -0.56, 0.43, 1.16], "seed": True}, [3, 0, 1, 2]),
     ],
 )
 def test_random_iterator(kwargs, expected):
@@ -106,7 +124,7 @@ def test_random_iterator(kwargs, expected):
 
 
 def test_centralsym_iterator_error():
-    with pytest.raises(TypeError, match=ITERATOR_SIZE_ERROR_MSG):
+    with pytest.raises(ValueError, match=re.escape(ITERATOR_SIZE_ERROR_MSG)):
         list(random_iterator())
 
 
@@ -117,6 +135,8 @@ def test_centralsym_iterator_error():
         ({"bvals": [1000] * 6}, [3, 2, 4, 1, 5, 0]),
         ({"bvals": [0, 700, 1000, 2000, 3000]}, [2, 1, 3, 0, 4]),
         ({"bvals": [0, 1000, 700, 2000, 3000]}, [2, 1, 3, 0, 4]),
+        ({"uptake": [0.32, 0.27, -0.12]}, [1, 0, 2]),
+        ({"uptake": [-1.02, -0.56, 0.43, 0.89, 1.16]}, [2, 1, 3, 0, 4]),
     ],
 )
 def test_centralsym_iterator(kwargs, expected):

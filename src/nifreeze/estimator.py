@@ -125,7 +125,7 @@ class Estimator:
 
         # Prepare iterator
         iterfunc = getattr(iterators, f"{self._strategy}_iterator")
-        index_iter = iterfunc(len(dataset), seed=kwargs.get("seed", None))
+        index_iter = iterfunc(size=len(dataset), seed=kwargs.get("seed", None))
 
         # Initialize model
         if isinstance(self._model, str):
@@ -175,7 +175,7 @@ class Estimator:
             if dataset.brainmask is not None:
                 bmask_path = ptmp_dir / "brainmask.nii.gz"
                 nb.Nifti1Image(
-                    dataset.brainmask.astype("uint8"), dataset.affine, None
+                    dataset.brainmask.astype(np.uint8), dataset.affine, None
                 ).to_filename(bmask_path)
 
             with tqdm(total=dataset_length, unit="vols.") as pbar:
