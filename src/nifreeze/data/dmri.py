@@ -63,6 +63,27 @@ DEFAULT_MULTISHELL_BIN_COUNT_THR = 7
 DTI_MIN_ORIENTATIONS = 6
 """Minimum number of nonzero b-values in a DWI dataset."""
 
+GRADIENT_BVAL_BVEC_PRIORITY_WARN_MSG = "Both a gradients table file and b-vec/val files are defined; ignoring b-vec/val files in favor of the gradients_file."
+""""dMRI gradient file priority warning message."""
+
+BVAL_BVEC_DIMENSIONALITY_MIMATCH_ERROR_MSG = "bvals length must match number of bvecs."
+"""dMRI b-val/b-vec dimensionality mismatch error message."""
+
+BVEC_DIMENSIONALITY_ERROR_MSG = "Loaded bvecs must be a 2D array."
+"""dMRI b-vector dimensionality error message."""
+
+BVEC_LOADING_ERROR_MSG = "Could not interpret bvecs array shape."
+"""dMRI b-vec loading error message."""
+
+GRADIENT_DIMENSIONALITY_ERROR_MSG = "Loaded gradients array must be two-dimensional."
+"""dMRI gradient dimensionality error message."""
+
+GRADIENT_LOADING_ERROR_MSG = "Could not interpret gradients file shape; expected (N,4) or (4,N)."
+"""dMRI gradient loading error message."""
+
+GRADIENT_DATA_MISSING_ERROR = "No gradient data provided. Please specify either a gradients_file or (bvec_file & bval_file)."
+"""dMRI missing gradient data message."""
+
 
 @attrs.define(slots=True)
 class DWI(BaseDataset[np.ndarray]):
@@ -381,11 +402,15 @@ def from_nii(
     if gradients_file:
         grad = np.loadtxt(gradients_file, dtype="float32")
         if bvec_file and bval_file:
-            warn(
-                "Both a gradients table file and b-vec/val files are defined; "
-                "ignoring b-vec/val files in favor of the gradients_file.",
-                stacklevel=2,
-            )
+            warn(GRADIENT_BVAL_BVEC_PRIORITY_WARN_MSG, stacklevel=2)
+        if grad.ndim != 2:
+            raise RuntimeError(GRADIENT_DIMENSIONALITY_ERROR_MSG)
+        if grad.shape[1] == 4:
+            pass
+        elif grad.shape[0] == 4:
+            grad = grad.T
+        else:
+            raise RuntimeError(GRADIENT_LOADING_ERROR_MSG)
     elif bvec_file and bval_file:
         bvecs = np.loadtxt(bvec_file, dtype="float32")
         if bvecs.ndim == 1:
@@ -398,14 +423,13 @@ def from_nii(
             bvals = np.squeeze(bvals)
         grad = np.column_stack((bvecs, bvals))
     else:
-        raise RuntimeError(
-            "No gradient data provided. "
-            "Please specify either a gradients_file or (bvec_file & bval_file)."
-        )
+        raise RuntimeError(GRADIENT_DATA_MISSING_ERROR)
 
     if grad.ndim == 1:
         grad = grad[np.newaxis, :]
 
+    # ToDo
+    # Make all gradient message be globals and test them
     if grad.shape[1] < 2:
         raise ValueError("Gradient table must have at least two columns (direction + b-value).")
 
