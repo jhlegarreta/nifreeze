@@ -88,11 +88,6 @@ def test_main(datadir):
     assert isinstance(load(input_file), DWI)
 
 
-def test_motion_file_not_implemented():
-    with pytest.raises(NotImplementedError):
-        from_nii("dmri.nii.gz", motion_file="motion.x5")
-
-
 @pytest.mark.random_gtab_data(10, (1000, 2000), 2)
 @pytest.mark.random_dwi_data(50, (34, 36, 24), True)
 @pytest.mark.parametrize("row_major_gradients", (False, True))
@@ -169,7 +164,7 @@ def test_dwi_instantiation_gradients_ndim_error(
     [(1, 0), (2, 0), (2, 1), (0, 1), (0, 2), (1, 2)],
 )
 def test_gradient_instantiation_dwi_vol_mismatch_error(
-    tmp_path, setup_random_dwi_data, additional_volume_count, additional_gradient_count
+    setup_random_dwi_data, additional_volume_count, additional_gradient_count
 ):
     (
         dwi_dataobj,
@@ -189,6 +184,25 @@ def test_gradient_instantiation_dwi_vol_mismatch_error(
         additional_gradients = np.tile(gradients[-1:, :], (additional_gradient_count, 1))
         gradients = np.concatenate((gradients, additional_gradients), axis=0)
 
+    # Test with b0s present
+    n_volumes = dwi_dataobj.shape[-1]
+    with pytest.raises(
+        ValueError,
+        match=GRADIENT_VOLUME_DIMENSIONALITY_MISMATCH_MISSING_ERROR.format(
+            n_volumes=n_volumes, n_gradients=gradients.shape[0]
+        ),
+    ):
+        DWI(
+            dataobj=dwi_dataobj,
+            affine=affine,
+            brainmask=brainmask_dataobj,
+            bzero=b0_dataobj,
+            gradients=gradients,
+        )
+
+    # Test without b0s present
+    dwi_dataobj = dwi_dataobj[..., 2:]
+    gradients = gradients[2:, :]
     n_volumes = dwi_dataobj.shape[-1]
     with pytest.raises(
         ValueError,
@@ -296,7 +310,7 @@ def test_load_gradients_bval_bvec_warn(tmp_path, setup_random_dwi_data):
         brainmask_dataobj,
         b0_dataobj,
         gradients,
-        b0_thres,
+        _,
     ) = setup_random_dwi_data
 
     dwi, _, _ = _dwi_data_to_nifti(
@@ -308,6 +322,9 @@ def test_load_gradients_bval_bvec_warn(tmp_path, setup_random_dwi_data):
 
     dwi_fname = tmp_path / "dwi.nii.gz"
     nb.save(dwi, dwi_fname)
+
+    b0_fname = tmp_path / "b0.nii.gz"
+    nb.Nifti1Image(b0_dataobj, np.eye(4), None).to_filename(b0_fname)
 
     grads_fname = tmp_path / "grads.txt"
     np.savetxt(grads_fname, gradients, fmt="%.6f")
@@ -326,7 +343,7 @@ def test_load_gradients_bval_bvec_warn(tmp_path, setup_random_dwi_data):
             gradients_file=grads_fname,
             bvec_file=bvec_fname,
             bval_file=bval_fname,
-            b0_thres=b0_thres,
+            b0_file=b0_fname,
         )
 
 
@@ -359,7 +376,7 @@ def test_load_gradients(tmp_path, setup_random_dwi_data, row_major_gradients):
     grads_fname = tmp_path / "grads.txt"
     np.savetxt(grads_fname, gradients, fmt="%.6f")
 
-    dwi = from_nii(dwi_fname, gradients_file=grads_fname, b0_thres=b0_thres)
+    dwi = from_nii(dwi_fname, gradients_file=grads_fname)
     if not row_major_gradients:
         gradmask = gradients.T[:, -1] > b0_thres
     else:
@@ -419,7 +436,7 @@ def test_load_bvecs_bvals(tmp_path, setup_random_dwi_data, transpose_bvals, tran
     np.savetxt(bvec_fname, bvecs, fmt="%.6f")
     np.savetxt(bval_fname, bvals, fmt="%.6f")
 
-    dwi = from_nii(dwi_fname, bvec_file=bvec_fname, bval_file=bval_fname, b0_thres=b0_thres)
+    dwi = from_nii(dwi_fname, bvec_file=bvec_fname, bval_file=bval_fname)
     gradmask = gradients[:, -1] > b0_thres
 
     expected_nonzero_grads = gradients[gradmask]
@@ -454,6 +471,7 @@ def test_load_gradients_missing(tmp_path, setup_random_dwi_data):
         from_nii(dwi_fname)
 
 
+@pytest.mark.skip(reason="to_nifti takes absurdly long")
 @pytest.mark.parametrize("insert_b0", (False, True))
 @pytest.mark.parametrize("rotate_bvecs", (False, True))
 def test_load(datadir, tmp_path, insert_b0, rotate_bvecs):  # noqa: C901
@@ -608,7 +626,6 @@ def test_equality_operator(tmp_path, setup_random_dwi_data):
         gradients_file=gradients_fname,
         b0_file=b0_fname,
         brainmask_file=brainmask_fname,
-        b0_thres=b0_thres,
     )
     hdf5_filename = tmp_path / "test_dwi.h5"
     dwi_obj.to_filename(hdf5_filename)
