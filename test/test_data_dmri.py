@@ -206,7 +206,7 @@ def test_dwi_post_init_errors(setup_random_uniform_spatial_data, case_mark):
 
 
 @pytest.mark.parametrize("vol_size", [(11, 11, 7)])
-@pytest.mark.parametrize("b0_count", [0, 1])
+@pytest.mark.parametrize("b0_count", [0, 1, 2])
 @pytest.mark.parametrize("bval_min, bval_max", [(800.0, 1200.0)])
 @pytest.mark.parametrize("provide_bzero", [False, True])
 def test_dwi_post_init_b0_handling(request, vol_size, b0_count, bval_min, bval_max, provide_bzero):
@@ -609,7 +609,7 @@ def test_load_gradients_missing(tmp_path, setup_random_dwi_data):
 
 
 @pytest.mark.parametrize("vol_size", [(4, 4, 5)])
-@pytest.mark.parametrize("b0_count", [0, 1])
+@pytest.mark.parametrize("b0_count", [0, 1, 2])
 @pytest.mark.parametrize("bval_min, bval_max", [(800.0, 1200.0)])
 @pytest.mark.parametrize("provide_bzero", [False, True])
 @pytest.mark.parametrize("insert_b0", [False, True])
