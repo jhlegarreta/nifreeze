@@ -206,3 +206,64 @@ def test_dti_model(setup_random_dwi_data):
     predicted = dtimodel.fit_predict(4)
     assert predicted is not None
     assert predicted.shape == dwi_dataobj.shape[:-1]
+
+
+@pytest.mark.random_gtab_data(10, (1000, 2000), 0)
+@pytest.mark.random_dwi_data(50, (14, 16, 8), True)
+def test_dki_model_bzero_exception(setup_random_dwi_data):
+    (
+        dwi_dataobj,
+        affine,
+        brainmask_dataobj,
+        _,
+        gradients,
+        _,
+    ) = setup_random_dwi_data
+
+    dataset = DWI(
+        dataobj=dwi_dataobj,
+        affine=affine,
+        brainmask=brainmask_dataobj,
+        gradients=gradients,
+    )
+
+    dkimodel = model.DKIModel(dataset)
+
+    with pytest.raises(ValueError, match=model.dmri.DWI_DKI_NULL_GRADIENT_ERROR_MSG):
+        dkimodel.fit_predict(4)
+
+
+@pytest.mark.random_gtab_data(10, (1000, 2000), 2)
+@pytest.mark.random_dwi_data(50, (14, 16, 8), True)
+def test_dki_model(setup_random_dwi_data):
+    (
+        dwi_dataobj,
+        affine,
+        brainmask_dataobj,
+        b0_dataobj,
+        gradients,
+        _,
+    ) = setup_random_dwi_data
+
+    # Ignore warning due to redundant b0 volumes
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=DWI_REDUNDANT_B0_WARN_MSG, category=UserWarning)
+        dataset = DWI(
+            dataobj=dwi_dataobj,
+            affine=affine,
+            brainmask=brainmask_dataobj,
+            bzero=b0_dataobj,
+            gradients=gradients,
+        )
+
+    import dipy.reconst.dki as dki
+    from dipy.core.gradients import gradient_table_from_bvals_bvecs
+    gtab = gradient_table_from_bvals_bvecs(gradients[1:, -1], gradients[1:, :-1])
+    data = np.concatenate([dataset.bzero[..., np.newaxis], dataset.dataobj], axis=-1)
+    dkimodel = dki.DiffusionKurtosisModel(gtab)
+    dkifit = dkimodel.fit(data[:, :, 9:10], mask=data[:, :, 9:10])
+
+    dkimodel = model.DKIModel(dataset)
+    predicted = dkimodel.fit_predict(4)
+    assert predicted is not None
+    assert predicted.shape == dwi_dataobj.shape[:-1]
