@@ -29,7 +29,8 @@ Benchmarking
 *NiFreeze* uses asv_ for performance benchmarking. Benchmarking code is found under the
 ``benchmarks/`` folder. Maintaining reasonable runtime and memory consumption of core
 *NiFreeze* components (e.g., models, data I/O, estimator) is critical for the
-efficiency of pipelines using it.
+efficiency of pipelines using it. Benchmarking results are continuously available in
+the `nifreeze dashboard`_.
 
 Library API (application program interface)
 -------------------------------------------

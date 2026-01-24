@@ -47,7 +47,7 @@ and eddy-current-derived distortion estimation in dMRI.
    :alt: Contribution checks
 
 .. image:: https://img.shields.io/badge/benchmarked%20by-asv-blue.svg
-   :target: https://github.com/nipreps/nifreeze/actions/workflows/benchmark.yml
+   :target: https://www.nipreps.org/nifreeze/benhcmarks/
    :alt: Benchmarks
 
 .. image:: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json
