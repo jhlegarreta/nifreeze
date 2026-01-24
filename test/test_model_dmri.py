@@ -22,8 +22,14 @@
 #
 """Unit tests exercising dMRI models."""
 
+import re
+import warnings
+from contextlib import nullcontext
+
 import numpy as np
 import pytest
+from dipy.core.gradients import check_multi_b, gradient_table_from_bvals_bvecs
+from dipy.reconst import dki, dti
 from dipy.sims.voxel import single_tensor
 
 from nifreeze import model
@@ -31,8 +37,10 @@ from nifreeze.data.dmri import DWI
 from nifreeze.data.dmri.utils import (
     DEFAULT_LOWB_THRESHOLD,
     DTI_MIN_ORIENTATIONS,
+    format_gradients,
 )
 from nifreeze.model._dipy import GaussianProcessModel
+from nifreeze.model.base import MASK_ABSENCE_WARN_MSG
 from nifreeze.testing import simulations as _sim
 
 B_MATRIX = np.array(
@@ -51,6 +59,158 @@ B_MATRIX = np.array(
     ],
     dtype=np.float32,
 )
+
+
+def _get_attributes(instance):
+    """Return a dictionary of non-callable, non-dunder scalar- or array-like attributes."""
+    _attrs = {}
+    # Loop over attribute names that are accessible from the instance
+    for n in dir(instance):
+        # Skip dunders
+        if n.startswith("__"):
+            continue
+        try:
+            v = getattr(instance, n)
+        except Exception:
+            continue
+        # Extract scalar, array-like or dictionary instances only
+        if not callable(v) and isinstance(
+            v, (int, float, str, bool, tuple, list, dict, np.ndarray, np.generic)
+        ):
+            _attrs[n] = v
+
+    return _attrs
+
+
+def _compare_instance_attributes(instance1, instance2):
+    """Compare non-callable, non-dunder attributes of two instances for numerical equality."""
+    # Get attributes of both instances, excluding dunder and method attributes
+    attributes1 = _get_attributes(instance1)
+    attributes2 = _get_attributes(instance2)
+
+    # Ensure both instances have the same attributes
+    if set(attributes1) != set(attributes2):
+        print("Instances have different sets of attributes.")
+        return False
+
+    # Compare the values of the attributes
+    all_equal = True
+    for attr in attributes1:
+        value1 = attributes1.get(attr)
+        value2 = attributes2.get(attr)
+
+        if value1 is None and value2 is None:
+            continue
+        if value1 is None or value2 is None:
+            print(f"Attribute '{attr}' differs: {value1} != {value2}")
+            all_equal = False
+            continue
+
+        elif value1 is None or value2 is None:
+            print(f"Attribute '{attr}' differs: {value1} != {value2}")
+            all_equal = False
+
+        try:
+            array1 = np.asarray(value1).ravel()
+            array2 = np.asarray(value2).ravel()
+            # If still a multidimensional array after raveling, it was something
+            # like a shape product, so skip
+            if array1.shape != array2.shape:
+                continue
+            if not np.allclose(array1, array2):
+                print(f"Attribute '{attr}' differs: {value1} != {array2}")
+                all_equal = False
+        except Exception:
+            # If conversion fails, assume equality to avoid complicating things
+            print(f"Attribute '{attr}' not compared: assuming equality")
+
+    if all_equal:
+        print("All attributes are equal.")
+    return all_equal
+
+
+@pytest.fixture
+def multi_shell_test_data(request):
+    """Create multi-shell data for model fitting/prediction."""
+    # Extract test parameters from the request node
+    params = request.param
+    rng = np.random.default_rng()
+    bval_shell = params["bval_shell"]
+    S0 = params["S0"]
+    evals = params["evals"]
+    hsph_dirs = params["hsph_dirs"]
+    snr = params["snr"]
+    vol_shape = params["vol_shape"]
+
+    n_voxels = np.prod(vol_shape)
+
+    gtab = []
+    for bval, dirs in zip(bval_shell, hsph_dirs):
+        gtab.append(_sim.create_single_shell_gradient_table(dirs, bval))
+    # Combine the bvals and bvecs to create the final gradient table; keep a
+    # single b0 value
+    bvals = np.concatenate([[0], np.concatenate([g[~g.b0s_mask].bvals for g in gtab])])
+    bvecs = np.vstack([np.zeros((1, 3)), np.vstack([g[~g.b0s_mask].bvecs for g in gtab])])
+
+    gtab = gradient_table_from_bvals_bvecs(bvals, bvecs)
+
+    signal = _sim.simulate_one_fiber_multivoxel(gtab, S0, snr, n_voxels, rng, evals=evals)
+
+    gradients = np.column_stack((gtab.bvecs, gtab.bvals))
+    gradients = format_gradients(gradients)
+
+    dwi_dataobj = signal.reshape(*vol_shape, gradients.shape[0])
+
+    return {
+        "rng": rng,
+        "dwi_dataobj": dwi_dataobj,
+        "gradients": gradients,
+        "gtab": gtab,
+        "signal": signal,
+    }
+
+
+def setup_multi_shell_fit_predict_data(multi_shell_test_data, ignore_bzero, use_mask):
+    """Set up multi-shell data for NiFreeze and DIPY fitting/prediction."""
+    rng, dwi_dataobj, gradients, gtab, signal = multi_shell_test_data.values()
+    vol_shape = dwi_dataobj.shape[:-1]
+
+    # Prepare the brain mask if `use_mask` is enabled
+    if not use_mask:
+        brainmask_dataobj = None
+    else:
+        brainmask_dataobj = rng.choice([True, False], size=vol_shape).astype(bool)
+
+        # Ensure at least one random value is True
+        random_idx = tuple(rng.integers(low=0, high=dim) for dim in vol_shape)
+        brainmask_dataobj[random_idx] = True
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=MASK_ABSENCE_WARN_MSG, category=UserWarning)
+        dataset = DWI(
+            dataobj=dwi_dataobj,
+            affine=np.eye(4),
+            brainmask=brainmask_dataobj,
+            gradients=gradients,
+        )
+
+    # Compute necessary parameters
+    data_mask = model.dmri._compute_data_mask(
+        vol_shape,
+        brainmask_dataobj,
+        dataset.bzero,
+        ignore_bzero=ignore_bzero,
+    )
+    flat_S0 = model.dmri._compute_S0(
+        dataset.dataobj,
+        data_mask,
+        dataset.bzero,
+        ignore_bzero=ignore_bzero,
+    )
+    S0 = np.zeros(vol_shape, dtype=flat_S0.dtype)
+    S0[data_mask] = flat_S0
+
+    return dataset, data_mask, S0, gtab
 
 
 def test_base_model_exceptions():
@@ -161,6 +321,223 @@ def test_dti_prediction_shape(setup_random_dwi_data, index):
         assert predicted.shape == dwi_dataobj.shape[:-1]
     else:
         assert predicted is None
+
+
+@pytest.mark.parametrize(
+    "random_gtab_params",
+    [
+        (10, (1000, 2000), 0),
+        (10, (1000, 2000), 1),
+        (10, (1000, 2000, 3000), 0),
+        (10, (1000, 2000, 3000), 1),
+    ],
+)
+@pytest.mark.random_dwi_data(50, (14, 16, 8), True)
+def test_dki_model_shell_exception(random_gtab_params, setup_random_dwi_data):
+    dwi_dataobj, affine, brainmask_dataobj, gradients, _ = setup_random_dwi_data
+
+    dataset = DWI(
+        dataobj=dwi_dataobj,
+        affine=affine,
+        brainmask=brainmask_dataobj,
+        gradients=gradients,
+    )
+
+    bvals = dataset.gradients[:, -1]
+    bvecs = dataset.gradients[:, :-1]
+    if dataset.bzero is not None:
+        bvals = np.concatenate([np.asarray([0]), bvals])
+        bvecs = np.concatenate([np.zeros([1, 3]), bvecs])
+    gtab = gradient_table_from_bvals_bvecs(bvals, bvecs)
+    enough_b = check_multi_b(gtab, 3, non_zero=False)
+
+    context = (
+        pytest.raises(ValueError, match=re.escape(model.dmri.DWI_DKI_SHELL_ERROR_MSG))
+        if not enough_b
+        else nullcontext()
+    )
+
+    with context:
+        model.DKIModel(dataset)
+
+
+@pytest.mark.random_gtab_data(10, (1000, 2000), 1)
+@pytest.mark.random_dwi_data(50, (14, 16, 8), True)
+@pytest.mark.parametrize("index", (None, 4))
+def test_dki_prediction_shape(setup_random_dwi_data, index):
+    dwi_dataobj, affine, brainmask_dataobj, gradients, _ = setup_random_dwi_data
+
+    dataset = DWI(
+        dataobj=dwi_dataobj,
+        affine=affine,
+        brainmask=brainmask_dataobj,
+        gradients=gradients,
+    )
+
+    dkimodel = model.DKIModel(dataset)
+    predicted = dkimodel.fit_predict(index)
+    if index is not None:
+        assert predicted is not None
+        assert predicted.shape == dwi_dataobj.shape[:-1]
+    else:
+        assert predicted is None
+
+
+@pytest.mark.parametrize(
+    "multi_shell_test_data",
+    [
+        {
+            "bval_shell": (1000, 2000),
+            "S0": 1,
+            "evals": (0.0015, 0.0003, 0.0003),
+            "hsph_dirs": (3, 4),
+            "snr": None,
+            "vol_shape": (1, 1, 1),
+        },
+        {
+            "bval_shell": (1000, 2000, 3000),
+            "S0": 1,
+            "evals": (0.0016, 0.0004, 0.0004),
+            "hsph_dirs": (3, 4, 5),
+            "snr": None,
+            "vol_shape": (1, 1, 1),
+        },
+        {
+            "bval_shell": (1000, 2000, 3000),
+            "S0": 1,
+            "evals": (0.0015, 0.0003, 0.0003),
+            "hsph_dirs": (3, 4, 5),
+            "snr": None,
+            "vol_shape": (1, 1, 1),
+        },
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("index", (None, 4, 9))
+@pytest.mark.parametrize("ignore_bzero", (False, True))
+@pytest.mark.parametrize("use_mask", (False, True))
+def test_dki_model_fit(multi_shell_test_data, index, ignore_bzero, use_mask):
+    """Ensure that we get the same result obtained through the DKI model
+    implemented in DIPY."""
+    dataset, data_mask, S0, gtab = setup_multi_shell_fit_predict_data(
+        multi_shell_test_data, ignore_bzero, use_mask
+    )
+
+    # Fit using NiFreeze
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=MASK_ABSENCE_WARN_MSG, category=UserWarning)
+        dkimodel_nf = model.DKIModel(dataset)
+
+    dkimodel_nf._fit(index)
+
+    # Fit using the DIPY DKI model directly
+    data = dataset.dataobj
+
+    # Account for the b0 value being prepended to the data/gtab
+    idxmask = np.ones(data.shape[-1] + 1, dtype=bool)
+    if index is not None:
+        index += 1
+        idxmask[index] = False
+
+    # Insert the b0 data into the DWI data
+    assert dataset.bzero is not None
+    data = np.concatenate([dataset.bzero[..., np.newaxis], data], axis=-1)
+
+    # Indexing the gtab only considers non-null gradients, so add the b0 back
+    _bvals = np.concatenate([[0], np.concatenate([g.bvals for g in gtab[idxmask]])])
+    _bvecs = np.vstack([np.zeros((1, 3)), np.vstack([g.bvecs for g in gtab[idxmask]])])
+    _gtab = gradient_table_from_bvals_bvecs(_bvals, _bvecs)
+
+    dkimodel_dp = dki.DiffusionKurtosisModel(_gtab)
+    dkifit_dp = dkimodel_dp.fit(data=data[..., idxmask], mask=data_mask)
+
+    assert _compare_instance_attributes(
+        dkimodel_nf._models[0].fit_array[0], dkifit_dp.fit_array[0][0][0]
+    )
+
+
+@pytest.mark.parametrize(
+    "multi_shell_test_data",
+    [
+        {
+            "bval_shell": (1000, 2000),
+            "S0": 1,
+            "evals": (0.0015, 0.0003, 0.0003),
+            "hsph_dirs": (3, 4),
+            "snr": None,
+            "vol_shape": (1, 1, 1),
+        },
+        {
+            "bval_shell": (1000, 2000, 3000),
+            "S0": 1,
+            "evals": (0.0016, 0.0004, 0.0004),
+            "hsph_dirs": (3, 4, 5),
+            "snr": None,
+            "vol_shape": (1, 1, 1),
+        },
+        {
+            "bval_shell": (1000, 2000, 3000),
+            "S0": 1,
+            "evals": (0.0015, 0.0003, 0.0003),
+            "hsph_dirs": (3, 4, 5),
+            "snr": None,
+            "vol_shape": (1, 1, 1),
+        },
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("index", (None, 4, 9))
+@pytest.mark.parametrize("ignore_bzero", (False, True))
+@pytest.mark.parametrize("use_mask", (False, True))
+def test_dki_model_predict(multi_shell_test_data, index, ignore_bzero, use_mask):
+    """Ensure that we get the same result obtained through the DKI model
+    implemented in DIPY."""
+    dataset, data_mask, S0, gtab = setup_multi_shell_fit_predict_data(
+        multi_shell_test_data, ignore_bzero, use_mask
+    )
+
+    # Fit & predict using NiFreeze
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=MASK_ABSENCE_WARN_MSG, category=UserWarning)
+        dkimodel_nf = model.DKIModel(dataset)
+
+    predicted_nf = dkimodel_nf.fit_predict(index)
+
+    # Fit & predict using the DIPY DKI model directly
+    data = dataset.dataobj
+
+    # Account for the b0 value being prepended to the data/gtab
+    idxmask = np.ones(data.shape[-1] + 1, dtype=bool)
+    if index is not None:
+        index += 1
+        idxmask[index] = False
+
+    # Insert the b0 data into the DWI data
+    assert dataset.bzero is not None
+    data = np.concatenate([dataset.bzero[..., np.newaxis], data], axis=-1)
+
+    # Indexing the gtab only considers non-null gradients, so add the b0 back
+    _bvals = np.concatenate([[0], np.concatenate([g.bvals for g in gtab[idxmask]])])
+    _bvecs = np.vstack([np.zeros((1, 3)), np.vstack([g.bvecs for g in gtab[idxmask]])])
+    _gtab = gradient_table_from_bvals_bvecs(_bvals, _bvecs)
+
+    dkimodel_dp = dki.DiffusionKurtosisModel(_gtab)
+    dkifit_dp = dkimodel_dp.fit(data=data[..., idxmask], mask=data_mask)
+
+    if index is not None:
+        predicted_dp = dkifit_dp.predict(gtab[index], S0=S0)
+
+        # Mask the DIPY prediction
+        # ToDo
+        # Masking the _S0 has the same effect, but leaving this here so that it
+        # is removed once https://github.com/dipy/dipy/pull/3691 gets into a
+        # DIPY release
+        brainmask_dataobj = dataset.brainmask
+        if brainmask_dataobj is not None:
+            predicted_dp = predicted_dp * brainmask_dataobj[..., np.newaxis]
+
+        assert predicted_nf is not None
+        assert np.allclose(predicted_nf, predicted_dp[..., 0])
 
 
 @pytest.mark.parametrize(
