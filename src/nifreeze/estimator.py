@@ -88,14 +88,43 @@ class Estimator:
         prev: Estimator | Filter | None = None,
         model_kwargs: dict | None = None,
         single_fit: bool = False,
+        start_index: int = 0,
+        end_index: int | None = None,
+        size: int | None = None,
         **kwargs,
     ):
+
+        # ToDo
+        # Document start, end and size
+        # ToDo
+        # Checks for start_index and end_index validity
+        if end_index is not None and size is not None:
+            raise ValueError("Cannot specify both 'end_index' and 'size'.")
+
+        if start_index < 0:
+            raise ValueError("'start_index' must be >= 0.")
+
+        if end_index is not None and end_index <= start_index:
+            raise ValueError("'end_index' must be > 'start_index'.")
+
+        if size is not None and size <= 0:
+            raise ValueError("'size' must be > 0.")
+
         self._model = model
         self._prev = prev
         self._strategy = strategy
         self._single_fit = single_fit
         self._model_kwargs = model_kwargs or {}
         self._align_kwargs = kwargs or {}
+
+        self._start_index = start_index
+        self._end_index = end_index
+
+        # Calculate iter_size from end_index or size
+        if end_index is not None:
+            self._iter_size = end_index - start_index
+        else:
+            self._iter_size = size
 
     def run(self, dataset: DatasetT, **kwargs) -> Self:
         """
@@ -131,6 +160,8 @@ class Estimator:
             uptake=kwargs.pop("uptake", None),
             seed=kwargs.get("seed", None),
             round_decimals=kwargs.pop("round_decimals", iterators.DEFAULT_ROUND_DECIMALS),
+            start_index=self._start_index,
+            iter_size=self._iter_size, # ToDo No, we should not need this, the size above should be the one over which to iterate
         )
 
         # Initialize model
@@ -172,7 +203,14 @@ class Estimator:
         kwargs["num_threads"] = n_threads
         kwargs = self._align_kwargs | kwargs
 
-        dataset_length = len(dataset)
+        # Calculate effective dataset length for progress bar
+        if self._iter_size is not None:
+            dataset_length = self._iter_size
+        elif self._end_index is not None:
+            dataset_length = self._end_index - self._start_index
+        else:
+            dataset_length = len(dataset) - self._start_index
+
         with TemporaryDirectory() as tmp_dir:
             print(f"Processing in <{tmp_dir}>")
             ptmp_dir = Path(tmp_dir)

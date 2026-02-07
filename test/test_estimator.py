@@ -120,6 +120,146 @@ def test_estimator_init_model_string(request, monkeypatch):
     assert est._model == model_name
 
 
+class DummyModel(BaseModel):
+    def __init__(self, dataset, **kwargs):
+        super().__init__(dataset, **kwargs)
+        self._fitted_indices = []
+
+    def fit_predict(self, index, **kwargs):
+        self._fitted_indices.append(index)
+        return np.zeros(self._dataset.dataobj.shape[:3], dtype=np.float32)
+
+
+class DummyDataset(BaseDataset):
+    def __init__(self, n_volumes=10):
+        dataobj = np.random.rand(5, 5, 5, n_volumes).astype(np.float32)
+        affine = np.eye(4)
+        brainmask = np.ones((5, 5, 5), dtype=bool)
+        super().__init__(dataobj=dataobj, affine=affine, brainmask=brainmask)
+
+    def __len__(self):
+        return self.dataobj.shape[-1]
+
+
+def test_estimator_start_index(monkeypatch):
+    """Test that estimator respects start_index."""
+    recorded_indices = []
+
+    def fake_set_transform(self, i, xform):
+        recorded_indices.append(i)
+
+    monkeypatch.setattr(type(DummyDataset()), "set_transform",
+                        fake_set_transform)
+
+    class DummyXForm:
+        matrix = np.eye(4)
+
+    monkeypatch.setattr(
+        nifreeze.estimator,
+        "_run_registration",
+        lambda *a, **k: DummyXForm(),
+    )
+
+    dataset = DummyDataset(n_volumes=10)
+    model = DummyModel(dataset=dataset)
+
+    estimator = Estimator(model, strategy="linear", start_index=3)
+    estimator.run(dataset)
+
+    # Should only process indices 3-9
+    assert min(recorded_indices) == 3
+    assert max(recorded_indices) == 9
+    assert len(recorded_indices) == 7
+
+
+def test_estimator_start_and_end_index(monkeypatch):
+    """Test that estimator respects both start_index and end_index."""
+    recorded_indices = []
+
+    def fake_set_transform(self, i, xform):
+        recorded_indices.append(i)
+
+    monkeypatch.setattr(type(DummyDataset()), "set_transform",
+                        fake_set_transform)
+
+    class DummyXForm:
+        matrix = np.eye(4)
+
+    monkeypatch.setattr(
+        nifreeze.estimator,
+        "_run_registration",
+        lambda *a, **k: DummyXForm(),
+    )
+
+    dataset = DummyDataset(n_volumes=10)
+    model = DummyModel(dataset=dataset)
+
+    estimator = Estimator(model, strategy="linear", start_index=2, end_index=7)
+    estimator.run(dataset)
+
+    # Should only process indices 2-6 (end_index is exclusive)
+    assert sorted(recorded_indices) == [2, 3, 4, 5, 6]
+    assert len(recorded_indices) == 5
+
+
+def test_estimator_start_index_and_size(monkeypatch):
+    """Test that estimator respects start_index and size."""
+    recorded_indices = []
+
+    def fake_set_transform(self, i, xform):
+        recorded_indices.append(i)
+
+    monkeypatch.setattr(type(DummyDataset()), "set_transform",
+                        fake_set_transform)
+
+    class DummyXForm:
+        matrix = np.eye(4)
+
+    monkeypatch.setattr(
+        nifreeze.estimator,
+        "_run_registration",
+        lambda *a, **k: DummyXForm(),
+    )
+
+    dataset = DummyDataset(n_volumes=10)
+    model = DummyModel(dataset=dataset)
+
+    estimator = Estimator(model, strategy="linear", start_index=4, size=3)
+    estimator.run(dataset)
+
+    # Should only process indices 4-6
+    assert sorted(recorded_indices) == [4, 5, 6]
+    assert len(recorded_indices) == 3
+
+
+def test_estimator_invalid_both_end_and_size():
+    """Test that providing both end_index and size raises an error."""
+    dataset = DummyDataset(n_volumes=10)
+    model = DummyModel(dataset=dataset)
+
+    with pytest.raises(ValueError,
+                       match="Cannot specify both 'end_index' and 'size'"):
+        Estimator(model, start_index=2, end_index=7, size=3)
+
+
+def test_estimator_invalid_start_index():
+    """Test that negative start_index raises an error."""
+    dataset = DummyDataset(n_volumes=10)
+    model = DummyModel(dataset=dataset)
+
+    with pytest.raises(ValueError, match="'start_index' must be >= 0"):
+        Estimator(model, start_index=-1)
+
+
+def test_estimator_invalid_end_index():
+    """Test that end_index <= start_index raises an error."""
+    dataset = DummyDataset(n_volumes=10)
+    model = DummyModel(dataset=dataset)
+
+    with pytest.raises(ValueError, match="'end_index' must be > 'start_index'"):
+        Estimator(model, start_index=5, end_index=3)
+
+
 @pytest.mark.parametrize(
     "strategy, iterator_func, modality",
     [

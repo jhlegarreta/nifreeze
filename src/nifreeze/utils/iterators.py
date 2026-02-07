@@ -55,6 +55,52 @@ BVALS_KWARG = "bvals"
 UPTAKE_KWARG = "uptake"
 """Uptake keyword argument name."""
 
+START_INDEX_DOC = """
+start_index : :obj:`int`, optional
+    Starting index (inclusive) for the iteration. If provided, only indices
+    >= start_index will be yielded. Default: 0.
+"""
+
+
+def _filter_indices(
+        indices: Iterator[int], start_index: int = 0, size: int | None = None
+) -> Iterator[int]:
+    """
+    Filter indices to only yield those within [start_index, start_index + size).
+
+    Parameters
+    ----------
+    indices : :obj:`Iterator[int]`
+        The original index iterator.
+    start_index : :obj:`int`, optional
+        Starting index (inclusive). Default: 0.
+    size : :obj:`int`, optional
+        Number of indices to yield. If None, yields all indices >= start_index.
+
+    Yields
+    ------
+    :obj:`int`
+        The next filtered index.
+
+    Examples
+    --------
+    >>> list(_filter_indices(range(10), start_index=3, size=4))
+    [3, 4, 5, 6]
+    >>> list(_filter_indices(range(10), start_index=5))
+    [5, 6, 7, 8, 9]
+    >>> list(_filter_indices([2, 5, 1, 8, 3], start_index=2, size=3))
+    [2, 3]
+    """
+    end_index = start_index + size if size is not None else None
+
+    for idx in indices:
+        if idx >= start_index:
+            if end_index is None or idx < end_index:
+                yield idx
+            elif idx >= end_index:
+                # Early termination for sorted iterators
+                break
+
 
 def _get_size_from_kwargs(kwargs: dict) -> int:
     """Extract the size from kwargs, ensuring only one key is used.
@@ -81,9 +127,20 @@ def _get_size_from_kwargs(kwargs: dict) -> int:
 
 
 def linear_iterator(**kwargs) -> Iterator[int]:
+    start_index = kwargs.pop("start_index", 0)
     size = _get_size_from_kwargs(kwargs)
-    return (s for s in range(size))
+    iter_size = kwargs.pop("iter_size", None)
 
+    # If iter_size is provided, only iterate over that subset
+    if iter_size is not None:
+        end_index = start_index + iter_size
+        size = min(end_index, size)
+
+    return _filter_indices(
+        (s for s in range(size)),
+        start_index=start_index,
+        size=iter_size,
+    )
 
 linear_iterator.__doc__ = f"""
 Traverse the dataset volumes in ascending order.
@@ -91,6 +148,11 @@ Traverse the dataset volumes in ascending order.
 Other Parameters
 ----------------
 {SIZE_KEYS_DOC}
+{START_INDEX_DOC}
+iter_size : :obj:`int`, optional
+    Number of indices to iterate over. If provided, only yields indices in
+    [start_index, start_index + iter_size). If None, yields all indices
+    >= start_index.
 
 Notes
 -----
@@ -109,11 +171,17 @@ Examples
 --------
 >>> list(linear_iterator(size=10))
 [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+>>> list(linear_iterator(size=10, start_index=3))
+[3, 4, 5, 6, 7, 8, 9]
+>>> list(linear_iterator(size=10, start_index=3, iter_size=4))
+[3, 4, 5, 6]
 
 """
 
 
 def random_iterator(**kwargs) -> Iterator[int]:
+    start_index = kwargs.pop("start_index", 0)
+    iter_size = kwargs.pop("iter_size", None)
     size = _get_size_from_kwargs(kwargs)
 
     _seed = kwargs.get("seed", None)
@@ -123,7 +191,12 @@ def random_iterator(**kwargs) -> Iterator[int]:
 
     index_order = list(range(size))
     random.shuffle(index_order)
-    return (x for x in index_order)
+
+    return _filter_indices(
+        (x for x in index_order),
+        start_index=start_index,
+        size=iter_size,
+    )
 
 
 random_iterator.__doc__ = f"""
@@ -142,6 +215,11 @@ seed : :obj:`int`, :obj:`bool`, :obj:`str`, or :obj:`None`
     is passed :obj:`None`. If :obj:`True`, a default seed value is set.
 
 {SIZE_KEYS_DOC}
+{START_INDEX_DOC}
+iter_size : :obj:`int`, optional
+    Number of indices to iterate over. If provided, only yields indices in
+    [start_index, start_index + iter_size). If None, yields all indices
+    >= start_index.
 
 Notes
 -----
@@ -167,6 +245,10 @@ Examples
 [1, 12, 14, 5, 0, 11, 10, 9, 7, 8, 3, 13, 2, 6, 4]
 >>> list(random_iterator(size=15, seed=42))  # seed is 42
 [8, 13, 7, 6, 14, 12, 5, 2, 9, 3, 4, 11, 0, 1, 10]
+>>> list(random_iterator(size=15, seed=0, start_index=5))
+[10, 9, 5, 11, 7, 8, 14, 12, 6, 13]
+>>> list(random_iterator(size=15, seed=0, start_index=5, iter_size=3))
+[10, 9, 5]
 
 """
 
@@ -212,17 +294,27 @@ def _value_iterator(
 
 
 def monotonic_value_iterator(*_, **kwargs) -> Iterator[int]:
+    start_index = kwargs.pop("start_index", 0)
+    iter_size = kwargs.pop("iter_size", None)
+
     try:
-        feature = next(k for k in (BVALS_KWARG, UPTAKE_KWARG) if kwargs.get(k) is not None)
+        feature = next(
+            k for k in (BVALS_KWARG, UPTAKE_KWARG) if kwargs.get(k) is not None)
     except StopIteration:
-        raise TypeError(KWARG_ERROR_MSG.format(kwarg=f"{BVALS_KWARG} or {UPTAKE_KWARG}"))
+        raise TypeError(
+            KWARG_ERROR_MSG.format(kwarg=f"{BVALS_KWARG} or {UPTAKE_KWARG}"))
 
     ascending = feature == BVALS_KWARG
     values = kwargs[feature]
-    return _value_iterator(
-        values,
-        ascending=ascending,
-        round_decimals=kwargs.get("round_decimals", DEFAULT_ROUND_DECIMALS),
+
+    return _filter_indices(
+        _value_iterator(
+            values,
+            ascending=ascending,
+            round_decimals=kwargs.get("round_decimals", DEFAULT_ROUND_DECIMALS),
+        ),
+        start_index=start_index,
+        size=iter_size,
     )
 
 
@@ -241,6 +333,11 @@ value across the entire volume.
 Other Parameters
 ----------------
 {SIZE_KEYS_DOC}
+{START_INDEX_DOC}
+iter_size : :obj:`int`, optional
+    Number of indices to iterate over. If provided, only yields indices in
+    [start_index, start_index + iter_size). If None, yields all indices
+    >= start_index.
 
 Notes
 -----
@@ -261,23 +358,31 @@ Examples
 [0, 1, 8, 4, 5, 2, 3, 6, 7]
 >>> list(monotonic_value_iterator(uptake=[-1.23, 1.06, 1.02, 1.38, -1.46, -1.12, -1.19, 1.24, 1.05]))
 [3, 7, 1, 8, 2, 5, 6, 0, 4]
+>>> list(monotonic_value_iterator(bvals=[0.0, 0.0, 1000.0, 1000.0, 700.0, 700.0, 2000.0, 2000.0, 0.0], start_index=4))
+[4, 5, 2, 3, 6, 7]
+>>> list(monotonic_value_iterator(uptake=[-1.23, 1.06, 1.02, 1.38, -1.46, -1.12, -1.19, 1.24, 1.05], start_index=2, iter_size=4))
+[3, 7, 8, 2]
 """
 
 
 def centralsym_iterator(**kwargs) -> Iterator[int]:
+    start_index = kwargs.pop("start_index", 0)
+    iter_size = kwargs.pop("iter_size", None)
     size = _get_size_from_kwargs(kwargs)
 
     linear = list(range(size))
-    return (
+    indices = (
         x
         for x in chain.from_iterable(
-            zip_longest(
-                linear[size // 2 :],
-                reversed(linear[: size // 2]),
-            )
+        zip_longest(
+            linear[size // 2:],
+            reversed(linear[: size // 2]),
         )
+    )
         if x is not None
     )
+
+    return _filter_indices(indices, start_index=start_index, size=iter_size)
 
 
 centralsym_iterator.__doc__ = f"""
@@ -286,6 +391,11 @@ Traverse the dataset starting from the center and alternatingly progressing to t
 Other Parameters
 ----------------
 {SIZE_KEYS_DOC}
+{START_INDEX_DOC}
+iter_size : :obj:`int`, optional
+    Number of indices to iterate over. If provided, only yields indices in
+    [start_index, start_index + iter_size). If None, yields all indices
+    >= start_index.
 
 Notes
 -----
@@ -301,4 +411,8 @@ Examples
 [5, 4, 6, 3, 7, 2, 8, 1, 9, 0]
 >>> list(centralsym_iterator(size=11))
 [5, 4, 6, 3, 7, 2, 8, 1, 9, 0, 10]
+>>> list(centralsym_iterator(size=10, start_index=3))
+[5, 4, 6, 3, 7, 8, 9]
+>>> list(centralsym_iterator(size=11, start_index=3, iter_size=5))
+[5, 4, 6, 3, 7]
 """

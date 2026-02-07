@@ -186,3 +186,98 @@ def test_monotonic_value_iterator(feature, values, expected):
     sorted_vals = [values[i] for i in obtained]
     reverse = True if feature == "uptake" else False
     assert sorted_vals == sorted(values, reverse=reverse)
+
+
+from nifreeze.utils.iterators import _filter_indices
+
+
+def test_filter_indices_basic():
+    """Test basic index filtering."""
+    indices = range(10)
+    assert list(_filter_indices(indices, start_index=3, size=4)) == [3, 4, 5, 6]
+    assert list(_filter_indices(indices, start_index=5)) == [5, 6, 7, 8, 9]
+    assert list(_filter_indices(indices, start_index=0, size=3)) == [0, 1, 2]
+
+
+def test_filter_indices_unordered():
+    """Test filtering with unordered indices."""
+    indices = [2, 5, 1, 8, 3, 7, 0, 9]
+    assert list(_filter_indices(indices, start_index=2, size=4)) == [2, 5, 8, 3]
+    assert list(_filter_indices(indices, start_index=5)) == [5, 8, 7, 9]
+
+
+def test_linear_iterator_with_start_index():
+    """Test linear iterator with start_index."""
+    assert list(linear_iterator(size=10, start_index=3)) == [3, 4, 5, 6, 7, 8, 9]
+    assert list(linear_iterator(size=10, start_index=0)) == list(range(10))
+
+
+def test_linear_iterator_with_size():
+    """Test linear iterator with start_index and iter_size."""
+    assert list(linear_iterator(size=10, start_index=3, iter_size=4)) == [3, 4, 5, 6]
+    assert list(linear_iterator(size=10, start_index=5, iter_size=2)) == [5, 6]
+
+
+def test_random_iterator_with_start_index():
+    """Test random iterator with start_index."""
+    result = list(random_iterator(size=15, seed=0, start_index=5))
+    # All results should be >= 5
+    assert all(idx >= 5 for idx in result)
+    # Should have 10 elements (15 - 5)
+    assert len(result) == 10
+
+
+def test_random_iterator_with_size():
+    """Test random iterator with start_index and iter_size."""
+    result = list(random_iterator(size=15, seed=0, start_index=5, iter_size=3))
+    # All results should be >= 5
+    assert all(idx >= 5 for idx in result)
+    # Should have exactly 3 elements
+    assert len(result) == 3
+
+
+def test_centralsym_iterator_with_start_index():
+    """Test centralsym iterator with start_index."""
+    result = list(centralsym_iterator(size=10, start_index=3))
+    assert all(idx >= 3 for idx in result)
+    expected_length = 7  # indices 3-9
+    assert len(result) == expected_length
+
+
+def test_centralsym_iterator_with_size():
+    """Test centralsym iterator with start_index and iter_size."""
+    result = list(centralsym_iterator(size=11, start_index=3, iter_size=5))
+    assert all(idx >= 3 for idx in result)
+    assert len(result) == 5
+
+
+def test_monotonic_value_iterator_with_start_index():
+    """Test monotonic_value iterator with start_index."""
+    bvals = [0.0, 0.0, 1000.0, 1000.0, 700.0, 700.0, 2000.0, 2000.0, 0.0]
+    result = list(monotonic_value_iterator(bvals=bvals, start_index=4))
+    assert all(idx >= 4 for idx in result)
+    # Original full order: [0, 1, 8, 4, 5, 2, 3, 6, 7]
+    # Filtered (>= 4): [8, 4, 5, 2, 3, 6, 7] -> [4, 5, 6, 7, 8]? No, order preserved
+    expected = [8, 4, 5, 6, 7]  # indices >= 4 from original monotonic order
+    assert result == expected
+
+
+def test_monotonic_value_iterator_with_size():
+    """Test monotonic_value iterator with start_index and iter_size."""
+    uptake = [-1.23, 1.06, 1.02, 1.38, -1.46, -1.12, -1.19, 1.24, 1.05]
+    result = list(monotonic_value_iterator(uptake=uptake, start_index=2, iter_size=4))
+    assert all(idx >= 2 for idx in result)
+    assert len(result) == 4
+
+
+@pytest.mark.parametrize("start_index,iter_size,expected", [
+    (0, None, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+    (3, None, [3, 4, 5, 6, 7, 8, 9]),
+    (0, 5, [0, 1, 2, 3, 4]),
+    (3, 4, [3, 4, 5, 6]),
+    (7, 2, [7, 8]),
+])
+def test_linear_iterator_parametrize(start_index, iter_size, expected):
+    """Parametrized tests for linear iterator."""
+    result = list(linear_iterator(size=10, start_index=start_index, iter_size=iter_size))
+    assert result == expected
