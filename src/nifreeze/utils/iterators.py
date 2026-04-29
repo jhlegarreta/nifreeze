@@ -29,7 +29,17 @@ from typing import Iterator, Sequence
 DEFAULT_ROUND_DECIMALS = 2
 """Round decimals to use when comparing values to be sorted for iteration purposes."""
 
-SIZE_KEYS = ("size", "bvals", "uptake")
+SIZE_KWARG = "size"
+"""Size keyword argument name."""
+BVALS_KWARG = "bvals"
+"""b-vals keyword argument name."""
+UPTAKE_KWARG = "uptake"
+"""Uptake keyword argument name."""
+
+MODALITY_SPECIFIC_SIZE_KEYS = (BVALS_KWARG, UPTAKE_KWARG)
+"""Modality-specific keys used to infer the number of volumes in a dataset."""
+
+SIZE_KEYS = (SIZE_KWARG, BVALS_KWARG, UPTAKE_KWARG)
 """Keys that may be used to infer the number of volumes in a dataset. When the
 size of the structure to iterate over is not given explicitly, these keys
 correspond to properties that distinguish one imaging modality from another, and
@@ -46,23 +56,65 @@ uptake : :obj:`list`, optional
 
 ITERATOR_NOTES = """
 Only one of the size-related parameters (``size``, ``bvals``, or ``uptake``)
-may be provided at a time. If ``size`` is given, all other size-related
-parameters will be ignored. If ``size`` is not provided, the function will
-attempt to infer the number of volumes from the length or value of the provided
-parameter. If more than one such parameter is provided, a :exc:`ValueError`
-will be raised.
+may be provided at a time. If ``bvals`` or ``uptake`` is given, it takes
+precedence over ``size``. ``size`` is only used when no modality-specific
+parameter is provided. If more than one modality-specific parameter (``bvals``
+or ``uptake``) is provided at the same time, a :exc:`ValueError` will be
+raised.
 """
 
 ITERATOR_SIZE_ERROR_MSG = (
     f"None of {SIZE_KEYS} were provided to infer size: cannot build iterator without size."
 )
 """Iterator size argument error message."""
+ITERATOR_MULTIPLICITY_ERROR_MSG = (
+    f"Only one of the modality-specific size parameters "
+    f"({', '.join(MODALITY_SPECIFIC_SIZE_KEYS)}) may be provided at a time."
+)
+"""Iterator multiplicity error message."""
 KWARG_ERROR_MSG = "Keyword argument {kwarg} is required."
 """Iterator keyword argument error message."""
-BVALS_KWARG = "bvals"
-"""b-vals keyword argument name."""
-UPTAKE_KWARG = "uptake"
-"""Uptake keyword argument name."""
+
+
+def _resolve_domain(kwargs: dict, allowed_features: tuple = SIZE_KEYS) -> str:
+    """Determine which size-related feature to use from the provided kwargs.
+
+    Modality-specific keys (``bvals`` and ``uptake``) take precedence over
+    ``size``. If exactly one modality-specific key is provided (even alongside
+    ``size``), that key is selected. ``size`` is only used when no
+    modality-specific key is provided. If more than one modality-specific key
+    is provided at the same time, a :exc:`ValueError` is raised.
+
+    Parameters
+    ----------
+    kwargs : :obj:`dict`
+        The keyword arguments to inspect.
+    allowed_features : :obj:`tuple`, optional
+        The keys to consider. Defaults to :obj:`SIZE_KEYS`.
+
+    Returns
+    -------
+    :obj:`str`
+        The key of the selected feature.
+
+    Raises
+    ------
+    :exc:`ValueError`
+        If no size-related key is provided, or if more than one
+        modality-specific key is provided at the same time.
+    """
+    provided = [k for k in allowed_features if kwargs.get(k) is not None]
+    if not provided:
+        raise ValueError(ITERATOR_SIZE_ERROR_MSG)
+
+    # Modality-specific keys take precedence over size
+    modality_specific = [k for k in provided if k in MODALITY_SPECIFIC_SIZE_KEYS]
+    if modality_specific:
+        if len(modality_specific) > 1:
+            raise ValueError(ITERATOR_MULTIPLICITY_ERROR_MSG)
+        return modality_specific[0]
+
+    return SIZE_KWARG
 
 
 def _get_size_from_kwargs(kwargs: dict) -> int:
@@ -83,10 +135,9 @@ def _get_size_from_kwargs(kwargs: dict) -> int:
     :exc:`ValueError`
         If size could not be extracted.
     """
-    candidates = [kwargs[k] for k in SIZE_KEYS if k in kwargs]
-    if candidates:
-        return candidates[0] if isinstance(candidates[0], int) else len(candidates[0])
-    raise ValueError(ITERATOR_SIZE_ERROR_MSG)
+    feature = _resolve_domain(kwargs)
+    value = kwargs[feature]
+    return value if isinstance(value, int) else len(value)
 
 
 def linear_iterator(**kwargs) -> Iterator[int]:

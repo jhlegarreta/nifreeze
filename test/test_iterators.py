@@ -27,9 +27,11 @@ import pytest
 
 from nifreeze.utils.iterators import (
     BVALS_KWARG,
+    ITERATOR_MULTIPLICITY_ERROR_MSG,
     ITERATOR_SIZE_ERROR_MSG,
     KWARG_ERROR_MSG,
     UPTAKE_KWARG,
+    _resolve_domain,
     _value_iterator,
     centralsym_iterator,
     linear_iterator,
@@ -96,10 +98,25 @@ def test_linear_iterator_error():
         ({"size": 4}, [0, 1, 2, 3]),
         ({"bvals": [0, 1000, 2000, 3000]}, [0, 1, 2, 3]),
         ({"uptake": [-1.02, -0.56, 0.43, 1.16]}, [0, 1, 2, 3]),
+        # Modality-specific key takes precedence over size
+        ({"size": 999, "bvals": [0, 1000, 2000]}, [0, 1, 2]),
+        ({"size": 999, "uptake": [0.1, 0.2, 0.3]}, [0, 1, 2]),
     ],
 )
 def test_linear_iterator(kwargs, expected):
     assert list(linear_iterator(**kwargs)) == expected
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"bvals": [0, 1000], "uptake": [0.1, 0.2]},
+        {"bvals": [0, 1000], "uptake": [0.1, 0.2, 0.3]},
+    ],
+)
+def test_linear_iterator_multiplicity_error(kwargs):
+    with pytest.raises(ValueError, match=re.escape(ITERATOR_MULTIPLICITY_ERROR_MSG)):
+        list(linear_iterator(**kwargs))
 
 
 def test_random_iterator_error():
@@ -113,6 +130,9 @@ def test_random_iterator_error():
         ({"size": 5, "seed": 1234}, [1, 2, 4, 0, 3]),
         ({"bvals": [0, 1000, 2000, 3000], "seed": 42}, [2, 1, 3, 0]),
         ({"uptake": [-1.02, -0.56, 0.43, 1.16], "seed": True}, [3, 0, 1, 2]),
+        # Modality-specific key takes precedence over size
+        ({"size": 999, "bvals": [0, 1000, 2000, 3000], "seed": 42}, [2, 1, 3, 0]),
+        ({"size": 999, "uptake": [-1.02, -0.56, 0.43, 1.16], "seed": True}, [3, 0, 1, 2]),
     ],
 )
 def test_random_iterator(kwargs, expected):
@@ -120,6 +140,17 @@ def test_random_iterator(kwargs, expected):
     assert obtained == expected
     # Determinism check
     assert obtained == list(random_iterator(**kwargs))
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"bvals": [0, 1000], "uptake": [0.1, 0.2]},
+    ],
+)
+def test_random_iterator_multiplicity_error(kwargs):
+    with pytest.raises(ValueError, match=re.escape(ITERATOR_MULTIPLICITY_ERROR_MSG)):
+        list(random_iterator(**kwargs))
 
 
 def test_centralsym_iterator_error():
@@ -136,11 +167,25 @@ def test_centralsym_iterator_error():
         ({"bvals": [0, 1000, 700, 2000, 3000]}, [2, 1, 3, 0, 4]),
         ({"uptake": [0.32, 0.27, -0.12]}, [1, 0, 2]),
         ({"uptake": [-1.02, -0.56, 0.43, 0.89, 1.16]}, [2, 1, 3, 0, 4]),
+        # Modality-specific key takes precedence over size
+        ({"size": 999, "bvals": [1000] * 6}, [3, 2, 4, 1, 5, 0]),
+        ({"size": 999, "uptake": [0.32, 0.27, -0.12]}, [1, 0, 2]),
     ],
 )
 def test_centralsym_iterator(kwargs, expected):
     # The centralsym_iterator's output order depends only on the length
     assert list(centralsym_iterator(**kwargs)) == expected
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"bvals": [0, 1000], "uptake": [0.1, 0.2]},
+    ],
+)
+def test_centralsym_iterator_multiplicity_error(kwargs):
+    with pytest.raises(ValueError, match=re.escape(ITERATOR_MULTIPLICITY_ERROR_MSG)):
+        list(centralsym_iterator(**kwargs))
 
 
 @pytest.mark.parametrize(
@@ -186,3 +231,56 @@ def test_monotonic_value_iterator(feature, values, expected):
     sorted_vals = [values[i] for i in obtained]
     reverse = True if feature == "uptake" else False
     assert sorted_vals == sorted(values, reverse=reverse)
+
+
+@pytest.mark.parametrize(
+    "kwargs, expected_feature",
+    [
+        # Only size provided → size is used
+        ({"size": 5}, "size"),
+        # Only bvals provided → bvals is used
+        ({"bvals": [0, 1000, 2000]}, "bvals"),
+        # Only uptake provided → uptake is used
+        ({"uptake": [0.1, 0.2, 0.3]}, "uptake"),
+        # bvals alongside size → modality-specific (bvals) takes precedence
+        ({"size": 999, "bvals": [0, 1000, 2000]}, "bvals"),
+        # uptake alongside size → modality-specific (uptake) takes precedence
+        ({"size": 999, "uptake": [0.1, 0.2, 0.3]}, "uptake"),
+    ],
+)
+def test_resolve_domain_precedence(kwargs, expected_feature):
+    from nifreeze.utils.iterators import SIZE_KEYS
+
+    assert _resolve_domain(kwargs, allowed_features=SIZE_KEYS) == expected_feature
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        # No size-related key at all
+        {},
+        {"size": None},
+        {"bvals": None},
+        {"uptake": None},
+        {"size": None, "bvals": None, "uptake": None},
+    ],
+)
+def test_resolve_domain_size_error(kwargs):
+    from nifreeze.utils.iterators import SIZE_KEYS
+
+    with pytest.raises(ValueError, match=re.escape(ITERATOR_SIZE_ERROR_MSG)):
+        _resolve_domain(kwargs, allowed_features=SIZE_KEYS)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"bvals": [0, 1000], "uptake": [0.1, 0.2]},
+        {"size": 999, "bvals": [0, 1000], "uptake": [0.1, 0.2]},
+    ],
+)
+def test_resolve_domain_multiplicity_error(kwargs):
+    from nifreeze.utils.iterators import SIZE_KEYS
+
+    with pytest.raises(ValueError, match=re.escape(ITERATOR_MULTIPLICITY_ERROR_MSG)):
+        _resolve_domain(kwargs, allowed_features=SIZE_KEYS)
