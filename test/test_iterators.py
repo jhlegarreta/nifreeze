@@ -31,7 +31,7 @@ from nifreeze.utils.iterators import (
     ITERATOR_SIZE_ERROR_MSG,
     KWARG_ERROR_MSG,
     UPTAKE_KWARG,
-    _resolve_domain,
+    _resolve_feature,
     _value_iterator,
     centralsym_iterator,
     linear_iterator,
@@ -98,9 +98,6 @@ def test_linear_iterator_error():
         ({"size": 4}, [0, 1, 2, 3]),
         ({"bvals": [0, 1000, 2000, 3000]}, [0, 1, 2, 3]),
         ({"uptake": [-1.02, -0.56, 0.43, 1.16]}, [0, 1, 2, 3]),
-        # Modality-specific key takes precedence over size
-        ({"size": 999, "bvals": [0, 1000, 2000]}, [0, 1, 2]),
-        ({"size": 999, "uptake": [0.1, 0.2, 0.3]}, [0, 1, 2]),
     ],
 )
 def test_linear_iterator(kwargs, expected):
@@ -130,9 +127,6 @@ def test_random_iterator_error():
         ({"size": 5, "seed": 1234}, [1, 2, 4, 0, 3]),
         ({"bvals": [0, 1000, 2000, 3000], "seed": 42}, [2, 1, 3, 0]),
         ({"uptake": [-1.02, -0.56, 0.43, 1.16], "seed": True}, [3, 0, 1, 2]),
-        # Modality-specific key takes precedence over size
-        ({"size": 999, "bvals": [0, 1000, 2000, 3000], "seed": 42}, [2, 1, 3, 0]),
-        ({"size": 999, "uptake": [-1.02, -0.56, 0.43, 1.16], "seed": True}, [3, 0, 1, 2]),
     ],
 )
 def test_random_iterator(kwargs, expected):
@@ -167,9 +161,6 @@ def test_centralsym_iterator_error():
         ({"bvals": [0, 1000, 700, 2000, 3000]}, [2, 1, 3, 0, 4]),
         ({"uptake": [0.32, 0.27, -0.12]}, [1, 0, 2]),
         ({"uptake": [-1.02, -0.56, 0.43, 0.89, 1.16]}, [2, 1, 3, 0, 4]),
-        # Modality-specific key takes precedence over size
-        ({"size": 999, "bvals": [1000] * 6}, [3, 2, 4, 1, 5, 0]),
-        ({"size": 999, "uptake": [0.32, 0.27, -0.12]}, [1, 0, 2]),
     ],
 )
 def test_centralsym_iterator(kwargs, expected):
@@ -248,10 +239,10 @@ def test_monotonic_value_iterator(feature, values, expected):
         ({"size": 999, "uptake": [0.1, 0.2, 0.3]}, "uptake"),
     ],
 )
-def test_resolve_domain_precedence(kwargs, expected_feature):
+def test_resolve_feature_precedence(kwargs, expected_feature):
     from nifreeze.utils.iterators import SIZE_KEYS
 
-    assert _resolve_domain(kwargs, allowed_features=SIZE_KEYS) == expected_feature
+    assert _resolve_feature(kwargs, allowed_features=SIZE_KEYS) == expected_feature
 
 
 @pytest.mark.parametrize(
@@ -265,11 +256,11 @@ def test_resolve_domain_precedence(kwargs, expected_feature):
         {"size": None, "bvals": None, "uptake": None},
     ],
 )
-def test_resolve_domain_size_error(kwargs):
+def test_resolve_feature_size_error(kwargs):
     from nifreeze.utils.iterators import SIZE_KEYS
 
     with pytest.raises(ValueError, match=re.escape(ITERATOR_SIZE_ERROR_MSG)):
-        _resolve_domain(kwargs, allowed_features=SIZE_KEYS)
+        _resolve_feature(kwargs, allowed_features=SIZE_KEYS)
 
 
 @pytest.mark.parametrize(
@@ -279,8 +270,8 @@ def test_resolve_domain_size_error(kwargs):
         {"size": 999, "bvals": [0, 1000], "uptake": [0.1, 0.2]},
     ],
 )
-def test_resolve_domain_multiplicity_error(kwargs):
+def test_resolve_feature_multiplicity_error(kwargs):
     from nifreeze.utils.iterators import SIZE_KEYS
 
     with pytest.raises(ValueError, match=re.escape(ITERATOR_MULTIPLICITY_ERROR_MSG)):
-        _resolve_domain(kwargs, allowed_features=SIZE_KEYS)
+        _resolve_feature(kwargs, allowed_features=SIZE_KEYS)

@@ -76,33 +76,7 @@ KWARG_ERROR_MSG = "Keyword argument {kwarg} is required."
 """Iterator keyword argument error message."""
 
 
-def _resolve_domain(kwargs: dict, allowed_features: tuple = SIZE_KEYS) -> str:
-    """Determine which size-related feature to use from the provided kwargs.
-
-    Modality-specific keys (``bvals`` and ``uptake``) take precedence over
-    ``size``. If exactly one modality-specific key is provided (even alongside
-    ``size``), that key is selected. ``size`` is only used when no
-    modality-specific key is provided. If more than one modality-specific key
-    is provided at the same time, a :exc:`ValueError` is raised.
-
-    Parameters
-    ----------
-    kwargs : :obj:`dict`
-        The keyword arguments to inspect.
-    allowed_features : :obj:`tuple`, optional
-        The keys to consider. Defaults to :obj:`SIZE_KEYS`.
-
-    Returns
-    -------
-    :obj:`str`
-        The key of the selected feature.
-
-    Raises
-    ------
-    :exc:`ValueError`
-        If no size-related key is provided, or if more than one
-        modality-specific key is provided at the same time.
-    """
+def _resolve_feature(kwargs: dict, allowed_features: tuple = SIZE_KEYS) -> str:
     provided = [k for k in allowed_features if kwargs.get(k) is not None]
     if not provided:
         raise ValueError(ITERATOR_SIZE_ERROR_MSG)
@@ -115,6 +89,48 @@ def _resolve_domain(kwargs: dict, allowed_features: tuple = SIZE_KEYS) -> str:
         return modality_specific[0]
 
     return SIZE_KWARG
+
+
+_resolve_feature.__doc__ = f"""
+Determine which size-related feature to use from the provided kwargs.
+
+Modality-specific keys (``{MODALITY_SPECIFIC_SIZE_KEYS}``) take precedence
+over ``{SIZE_KWARG}``. If more than one modality-specific key is provided at
+the same time, a :exc:`ValueError` is raised.
+
+Parameters
+----------
+kwargs : :obj:`dict`
+    The keyword arguments to inspect.
+allowed_features : :obj:`tuple` of :obj:`str`, optional
+    Keys accepted to define the domain length (e.g., ``("{SIZE_KWARG}",)`` or
+    ``("{BVALS_KWARG}", "{UPTAKE_KWARG}")``). Exactly one of these keys must
+    be present in ``kwargs`` with a non-:obj:`None` value.
+
+Returns
+-------
+:obj:`str`
+    The key of the selected feature.
+
+Raises
+------
+:exc:`ValueError`
+    If no size-related key is provided, or if more than one
+    modality-specific key is provided at the same time.
+
+Examples
+--------
+>>> _resolve_feature({{"size": 4}})
+'{SIZE_KWARG}'
+>>> _resolve_feature({{"bvals": [0, 1000, 2000, 3000]}})
+'{BVALS_KWARG}'
+>>> _resolve_feature({{"uptake": [0.1, 0.12, 0.3, 0.4]}})
+'{UPTAKE_KWARG}'
+>>> _resolve_feature({{"size": 4, "bvals": [10, 20, 30, 40]}})
+'{BVALS_KWARG}'
+>>> _resolve_feature({{"size": 4, "uptake": [0.1, 0.12, 0.3, 0.4]}})
+'{UPTAKE_KWARG}'
+"""
 
 
 def _get_size_from_kwargs(kwargs: dict) -> int:
@@ -135,7 +151,7 @@ def _get_size_from_kwargs(kwargs: dict) -> int:
     :exc:`ValueError`
         If size could not be extracted.
     """
-    feature = _resolve_domain(kwargs)
+    feature = _resolve_feature(kwargs)
     value = kwargs[feature]
     return value if isinstance(value, int) else len(value)
 
