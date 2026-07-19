@@ -7,7 +7,7 @@ Model implementation
 =====================
 This page collects implementation notes that complement the auto-generated API
 documentation (see :doc:`api/nifreeze.model`). It documents design decisions and
-empirical characterizations that are specific to *NiFreeze*'s **code** — not the
+empirical characterizations that are specific to NiFreeze's **code** — not the
 underlying domain theory, which lives in the project's grounding knowledge base.
 
 .. _gqi-models:
@@ -27,14 +27,14 @@ The model and its fit descend from DIPY's ODF-model family
 (:class:`~dipy.reconst.odf.OdfModel` / :class:`~dipy.reconst.odf.OdfFit`), and
 :meth:`~nifreeze.model.gqi.GeneralizedQSamplingFit.odf` provides the forward
 signal → SDF transform expected of that family. Unlike DIPY's ODF models (and
-*NiFreeze*'s DTI/DKI), GQI deliberately does **not** use the ``@multi_voxel_fit``
+NiFreeze's DTI/DKI), GQI deliberately does **not** use the ``@multi_voxel_fit``
 decorator: its fit is a linear operator that merely stores the data, and
 prediction is a single vectorized matmul over all voxels, so per-voxel looping
 would only discard that vectorization.
 
 GQI as a signal predictor (a NiFreeze extension)
 ------------------------------------------------
-Yeh (2010) defines only the *forward* map signal → SDF. *NiFreeze* additionally
+Yeh (2010) defines only the *forward* map signal → SDF. NiFreeze additionally
 needs the *inverse* to predict the diffusion signal given a b-vector (and -value).
 :meth:`~nifreeze.model.gqi.GeneralizedQSamplingFit.predict` composes the
 forward GQI kernel with a Tikhonov-regularized reconstruction kernel
@@ -46,7 +46,7 @@ forward GQI kernel with a Tikhonov-regularized reconstruction kernel
    \mathbf{K}, \qquad \lambda_0 = 10^{-6}.
 
 This is the regularized least-squares signal whose forward GQI transform
-reproduces the fitted SDF. It is a *NiFreeze* modeling choice and is **not** part
+reproduces the fitted SDF. It is a NiFreeze modeling choice and is **not** part
 of Yeh (2010).
 
 .. _gqi-reconstruction-fidelity:
@@ -76,14 +76,14 @@ Consequently the missing degree of freedom is a **representation gap**, worse fo
 q-space-poor acquisitions (single-shell) than for grid/multi-shell data, not an
 ``S0`` intercept. Two practical corollaries:
 
-- **b=0 volumes are excluded** from GQI fitting/prediction in *NiFreeze*. Feeding
+- **b=0 volumes are excluded** from GQI fitting/prediction in NiFreeze. Feeding
   raw b=0 signal into the fit *without* an explicit constant term degrades the
   diffusion-weighted reconstruction (the large b=0 amplitude is not representable
   by the diffusion-weighted sinc basis); excluding b=0 avoids this cleanly.
 - ``method="gqi2"`` is a **weaker signal predictor** than the default
   ``"standard"``: its kernel is more oscillatory and ill-conditioned, so its
   round-trip does not preserve signal scale and its leave-one-volume-out
-  correlation falls below that of ``"standard"``. This is why *NiFreeze* defaults
+  correlation falls below that of ``"standard"``. This is why NiFreeze defaults
   to ``"standard"`` even though DIPY's GQI defaults to ``"gqi2"``.
 
 For motion estimation this amplitude shrinkage is benign (registration keys on
@@ -164,7 +164,7 @@ is *q-space-limited*, and no sphere density recovers the angular signal a single
 shell cannot encode.
 
 **Decision.** The default ``recursion_level = 5`` sits just past the knee for both
-regimes, so it is adequate for the single-shell data *NiFreeze* typically sees
+regimes, so it is adequate for the single-shell data NiFreeze typically sees
 while leaving headroom for grid/multi-shell acquisitions, where a higher value
 (e.g. 6) keeps paying off. Denser spheres cost compute (``O(vertices)`` per kernel
 build) for no single-shell benefit, so they are opt-in rather than the default.

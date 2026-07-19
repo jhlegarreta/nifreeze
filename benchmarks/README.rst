@@ -10,10 +10,11 @@ Usage
 Airspeed Velocity manages building and Python environments by itself,
 unless told otherwise.
 To run the benchmarks, you do not need to install
-a development version of *NiFreeze* on your current
+<<<<<<< HEAD
+a development version of NiFreeze on your current
 *Python* environment.
 
-To run all benchmarks for the latest commit, navigate to *NiFreeze*'s root
+To run all benchmarks for the latest commit, navigate to NiFreeze's root
 ``benchmarks`` directory and execute::
 
     asv run

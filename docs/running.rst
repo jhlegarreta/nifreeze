@@ -1,7 +1,7 @@
 .. _running_nifreeze:
 
-Running *NiFreeze*
-******************
+Running NiFreeze
+****************
 Command line interface
 ----------------------
 .. argparse::

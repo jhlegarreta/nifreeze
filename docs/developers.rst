@@ -4,7 +4,7 @@ For developers
 ==============
 Contributing
 ------------
-*NiFreeze* is a project of the *NiPreps Community*, `which specifies the contributing guidelines <https://www.nipreps.org/community/>`__.
+NiFreeze is a project of the *NiPreps Community*, `which specifies the contributing guidelines <https://www.nipreps.org/community/>`__.
 Before delving into the code, please make sure you have read all the guidelines offered online.
 
 Documentation
@@ -26,9 +26,9 @@ To build the documentation locally, you first need to make sure that ``setuptool
 Benchmarking
 ------------
 
-*NiFreeze* uses asv_ for performance benchmarking. Benchmarking code is found under the
+NiFreeze uses asv_ for performance benchmarking. Benchmarking code is found under the
 ``benchmarks/`` folder. Maintaining reasonable runtime and memory consumption of core
-*NiFreeze* components (e.g., models, data I/O, estimator) is critical for the
+NiFreeze components (e.g., models, data I/O, estimator) is critical for the
 efficiency of pipelines using it.
 
 Library API (application program interface)

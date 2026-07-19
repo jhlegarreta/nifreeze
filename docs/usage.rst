@@ -4,11 +4,11 @@ How to Use
 ==========
 Incorporating NiFreeze into a Python module or script
 -----------------------------------------------------
-To utilize *NiFreeze* functionalities within your Python module or script, follow these steps:
+To utilize NiFreeze functionalities within your Python module or script, follow these steps:
 
-1. **Import NiFreeze Components**: Start by importing necessary components from the *NiFreeze* package:
+1. **Import NiFreeze Components**: Start by importing necessary components from the NiFreeze package:
 
-   To use *NiFreeze* you will typically need to use three main components:
+   To use NiFreeze you will typically need to use three main components:
 
      - Some **data**: allows to build a construct over your data that allows
        the **model** and the **estimator** objects to deal with the data in

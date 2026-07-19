@@ -4,8 +4,8 @@ Design Principles
 Overview
 --------
 
-*NiFreeze*'s architecture is modular, facilitating extensibility and
-adaptability. *NiFreeze* is designed around the following core concepts:
+NiFreeze's architecture is modular, facilitating extensibility and
+adaptability. NiFreeze is designed around the following core concepts:
 
 - **Data ingestion**: Handles input data, providing generalized 4D data
   management across modalities.
@@ -29,7 +29,7 @@ Main Concepts
 Data Ingestion
 ^^^^^^^^^^^^^^
 
-*NiFreeze* implements a set of modality-specific 4D data readers that expose a
+NiFreeze implements a set of modality-specific 4D data readers that expose a
 uniform API, enabling transparent access to individual volumes by index.
 
 dMRI
@@ -47,7 +47,7 @@ that this volume serves as a canonical reference for transforming non-zero
 gradient volumes. Users can compute such reference ``b0`` volume using their
 preferred method and provide it when instantiating a :class:`api/nifreeze.data.dmri.DWI`
 class (e.g. through the :meth:`~nifreeze.data.dmri.io.from_nii`); otherwise,
-*NiFreeze* computes a reference ``b0`` as the median volume across
+NiFreeze computes a reference ``b0`` as the median volume across
 non-diffusion-weighted volumes. Note that following this design choice,
 the gradient data hosted by the :class:`api/nifreeze.data.dmri.DWI` instance
 only contains (nonzero) diffusion-weighted gradient values.
@@ -55,7 +55,7 @@ only contains (nonzero) diffusion-weighted gradient values.
 Preprocessing
 -------------
 
-*NiFreeze* provides a set of minimal preprocessing utilities under the form
+NiFreeze provides a set of minimal preprocessing utilities under the form
 of :class:`api/nifreeze.estimator.Filter`\s. :class:`api/nifreeze.estimator.Filter`\s
 can be specified as inputs to estimators so that the data used by the
 estimator is processed through the given filter instance.
@@ -64,7 +64,7 @@ Modeling
 --------
 
 These modules encapsulate the algorithms used for artifact estimation and
-correction. By abstracting the modeling logic, *NiFreeze* enables the
+correction. By abstracting the modeling logic, NiFreeze enables the
 integration of diverse methodologies tailored to specific research
 requirements.
 
@@ -76,7 +76,7 @@ the data).
 Iterators
 ---------
 
-Iterators in *NiFreeze* manage the traversal of data volumes, allowing access
+Iterators in NiFreeze manage the traversal of data volumes, allowing access
 operations to particular data volumes. They are designed to be extensible,
 allowing developers to implement custom traversal logic as needed.
 
@@ -84,7 +84,7 @@ allowing developers to implement custom traversal logic as needed.
 Estimation
 ----------
 
-*NiFreeze* estimators rely on predictive models to reconstruct artifact-free
+NiFreeze estimators rely on predictive models to reconstruct artifact-free
 volumes from artifact-affected 4D datasets. Each model maintains access to the
 full dataset, while the estimator traverses the data according to a specified
 iteration strategy (e.g., forward, reverse, or random ordering). At each step,
@@ -104,15 +104,15 @@ dataset's motion parameter attribute.
 Corrected datasets and associated metadata are produced in standardized
 formats for downstream analysis.
 
-Extending *NiFreeze*
-====================
+Extending NiFreeze
+==================
 
-To extend *NiFreeze*'s functionality,
+To extend NiFreeze's functionality,
 
 Creating New Iterators
 ----------------------
 
-To extend *NiFreeze*'s functionality, such as implementing a custom iterator,
+To extend NiFreeze's functionality, such as implementing a custom iterator,
 follow these general steps:
 
 1. **Create a new function**: Define a new iterator function implementing the
@@ -133,7 +133,7 @@ follow these general steps:
 
 
 1. **Integrate the function**: Incorporate the newly created iterator into the
-   *NiFreeze* workflow by updating the configuration or pipeline definitions to
+   NiFreeze workflow by updating the configuration or pipeline definitions to
    utilize your new implementation.
 
    .. code-block:: python
@@ -227,7 +227,7 @@ for speed during development or debugging.
 Usage
 -----
 
-The *NiFreeze* command-line interface supports specifying multiple models, which are applied in a cascade fashion. Users
+The NiFreeze command-line interface supports specifying multiple models, which are applied in a cascade fashion. Users
 can indicate which model should be used to address a specific problem, such as head motion or eddy current correction.
 
 The transformations computed at each level are stored in an HDF5 file and are used to initialize the immediately next
@@ -258,7 +258,7 @@ Developer Resources
 
 Refer to the :ref:`developers` document for detailed development guidelines.
 
-For guidance on contributing to *NiFreeze*, refer to the *NiPreps*
+For guidance on contributing to NiFreeze, refer to the *NiPreps*
 Contributing Guidelines:
 
 https://www.nipreps.org/community/CONTRIBUTING/

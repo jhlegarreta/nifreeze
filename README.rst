@@ -1,19 +1,19 @@
-*NiFreeze*
-==========
+NiFreeze
+========
 
 **Model-based estimation and correction of head motion and eddy current distortions in 4D neuroimaging**.
 
-*NiFreeze* is a flexible framework for volume-to-volume motion estimation and correction in d/fMRI and PET,
+NiFreeze is a flexible framework for volume-to-volume motion estimation and correction in d/fMRI and PET,
 and eddy-current-derived distortion estimation in dMRI.
 
-.. important:: *NiFreeze* is a major evolution and generalized successor of *eddymotion*
+.. important:: NiFreeze is a major evolution and generalized successor of *eddymotion*
 
    In November 2024, the *NiPreps Steering Committee* brought to the *Bi-monthly Roundup*
    the discussion about re-branding *eddymotion* to better reflect its aspirations to
    perform on diverse modalities.
 
    The `repository of the project <https://github.com/nipreps/eddymotion>`__
-   has been archived, and development will continue under the *NiFreeze* project.
+   has been archived, and development will continue under the NiFreeze project.
 
    The contributor list of *eddymotion* is found under the credit file
    ``.maint/EDDYMOTION.md`` in this repository.
@@ -68,10 +68,10 @@ However, *FSL* has commercial restrictions that hinder application within open-s
 such as *NiPreps* [6]_.
 In addition, *FSL*'s development model discourages the implementation of alternative data-modeling
 approaches to broaden the scope of application (e.g., modalities beyond dMRI).
-*NiFreeze* is an open-source implementation of ``eddy``'s approach to estimate artifacts
+NiFreeze is an open-source implementation of ``eddy``'s approach to estimate artifacts
 that permits alternative models that apply to, for instance, head motion estimation in fMRI
 and positron-emission tomography (PET) data.
-Like ``eddy``, *NiFreeze* estimates each volume's motion and distortion with a
+Like ``eddy``, NiFreeze estimates each volume's motion and distortion with a
 leave-one-volume-out scheme: a signal model fit on all the *other* volumes
 synthesizes an independent, same-contrast registration target for the held-out
 volume, sidestepping the ill-posed volume-to-volume registration of

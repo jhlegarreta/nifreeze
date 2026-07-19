@@ -24,7 +24,7 @@
 dMRI data representation
 ------------------------
 This submodule implements data structures and I/O utilities for diffusion MRI data.
-Please, beware that *NiFreeze* is very opinionated about the gradients and diffusion
+Please, beware that NiFreeze is very opinionated about the gradients and diffusion
 data representation.
 
 **Gradient Table Representation**.
@@ -33,7 +33,7 @@ be provided a gradient table, which is a :class:`numpy.ndarray` of shape ``(N, 4
 ``N`` is the number of diffusion-weighted volumes.
 The first three columns represent the gradient directions (b-vectors), and the fourth column
 represents the b-values in s/mm².
-*NiFreeze* expects that the gradient directions are normalized to unit length for non-zero
+NiFreeze expects that the gradient directions are normalized to unit length for non-zero
 b-values, and that the :math:`b=0` volumes have a gradient direction of :math:`(0, 0, 0)`.
 When non-unit b-vectors are detected, the corresponding b-value is automatically adjusted to
 reflect the actual diffusion weighting.
@@ -60,7 +60,7 @@ If both a ``bzero`` value is provided and :math:`b=0` values are detected in the
 table, the `:math:`b=0` volumes will be discarded, and the corresponding
 :attr:`~nifreeze.data.dmri.base.DWI.dataobj` and :attr:`~nifreeze.data.dmri.base.DWI.gradients`
 indices data will be removed.
-Therefore, ***NiFreeze* WILL NOT be able to reconstruct the original data organization**.
+Therefore, **NiFreeze WILL NOT be able to reconstruct the original data organization**.
 This design choice simplifies the internal representation and processing of diffusion MRI data.
 If you want to calculate a :math:`b=0` reference map in a more sophisticated way (e.g., after
 realignment of all the low-b volumes), you should handle this separately and feed your own

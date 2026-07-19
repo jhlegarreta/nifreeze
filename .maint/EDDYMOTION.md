@@ -1,8 +1,8 @@
 # eddymotion CONTRIBUTORS
 
-*NiFreeze* is a fork of *eddymotion*.
+NiFreeze is a fork of *eddymotion*.
 This document lists the contributors to *eddymotion*.
-Some of the authors named here may be active contributors to *NiFreeze*, and their names listed in the `CONTRIBUTORS.md` file.
+Some of the authors named here may be active contributors to NiFreeze, and their names listed in the `CONTRIBUTORS.md` file.
 
 | **Lastname** | **Name** | **Handle** | **ORCID** |
 | --- | --- | --- | --- |
