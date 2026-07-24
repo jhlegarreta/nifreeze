@@ -33,7 +33,7 @@ from dipy.segment.mask import median_otsu
 from joblib import cpu_count
 from scipy.ndimage import binary_dilation
 from skimage.morphology import ball
-from threadpoolctl import threadpool_limits
+from threadpoolctl import threadpool_limits  # type: ignore[import-untyped]
 
 from nifreeze.data.dmri import DWI
 from nifreeze.model.dmri import DKIModel
@@ -41,19 +41,26 @@ from nifreeze.model.gpr import DiffusionGPR, SphericalKriging
 from nifreeze.utils.ndimage import load_api
 
 
-class DKIBenchmark:
-    params = ([1000, 5000, 10000], [1, min(8, cpu_count())])
+class _DKIBaseBenchmark:
+    """Shared setup/timing utilities for DKI ASV benchmarks.
+    Not collected directly by ASV (no time_/track_ methods required by users).
+    """
+
+    params = ([5000, 10000, 20000], [1, min(8, cpu_count())])
     param_names = ["n_voxels", "n_jobs"]
-    unit = "ratio"
+
+    _WARMUP_RUNS = 1
+    _MEASURE_RUNS = 5
 
     def __init__(self):
-        self._dataset = None
-        self._index = None
+        self._dataset: DWI | None = None
+        self._index: int | None = None
+        self._serial_cache = {}  # keyed by n_voxels
 
     def setup(self, n_voxels, n_jobs):
         name = "sherbrooke_3shell"
-
         dwi_fname, bval_fname, bvec_fname = dpd.get_fnames(name=name)
+
         img = load_api(dwi_fname, nb.Nifti1Image)
         dwi_data = img.get_fdata()
         bvals, bvecs = read_bvals_bvecs(bval_fname, bvec_fname)
@@ -81,30 +88,56 @@ class DKIBenchmark:
         shell_1000 = get_bval_indices(bvals, 1000, tol=20)
         self._index = shell_1000[len(shell_1000) // 2]
 
+    def _fit_predict_once(self, n_jobs):
+        assert self._dataset is not None
+        assert self._index is not None
+
+        with (
+            threadpool_limits(limits=1, user_api="blas"),
+            threadpool_limits(limits=1, user_api="openmp"),
+        ):
+            t0 = time.perf_counter()
+            DKIModel(self._dataset).fit_predict(self._index, n_jobs=n_jobs)
+            return time.perf_counter() - t0
+
+    def _median_runtime(self, n_jobs):
+        for _ in range(self._WARMUP_RUNS):
+            self._fit_predict_once(n_jobs=n_jobs)
+        ts = [self._fit_predict_once(n_jobs=n_jobs) for _ in range(self._MEASURE_RUNS)]
+        return float(np.median(ts))
+
+    def _serial_time_for(self, n_voxels):
+        if n_voxels not in self._serial_cache:
+            self._serial_cache[n_voxels] = self._median_runtime(n_jobs=1)
+        return self._serial_cache[n_voxels]
+
+
+class DKITimingBenchmark(_DKIBaseBenchmark):
+    """Absolute runtime benchmark."""
+
+    unit = "seconds"
+
     def time_fit_predict(self, n_voxels, n_jobs):
         assert self._dataset is not None
         assert self._index is not None
-        with threadpool_limits(limits=1, user_api="blas"):
-            DKIModel(self._dataset).fit_predict(self._index, n_jobs=n_jobs)
+        return self._median_runtime(n_jobs=n_jobs)
+
+
+class DKISpeedupBenchmark(_DKIBaseBenchmark):
+    """Parallel speedup benchmark relative to n_jobs=1."""
+
+    unit = "ratio"
 
     def track_parallel_speedup(self, n_voxels, n_jobs):
+        assert self._dataset is not None
+        assert self._index is not None
 
         if n_jobs == 1:
             return 1.0
 
-        assert self._dataset is not None
-        assert self._index is not None
-
-        with threadpool_limits(limits=1, user_api="blas"):
-            t_serial_start = time.perf_counter()
-            DKIModel(self._dataset).fit_predict(self._index, n_jobs=1)
-            t_serial = time.perf_counter() - t_serial_start
-
-            t_parallel_start = time.perf_counter()
-            DKIModel(self._dataset).fit_predict(self._index, n_jobs=n_jobs)
-            t_parallel = time.perf_counter() - t_parallel_start
-
-            return t_serial / t_parallel if t_parallel > 0 else float("inf")
+        t_serial = self._serial_time_for(n_voxels)
+        t_parallel = self._median_runtime(n_jobs=n_jobs)
+        return t_serial / t_parallel if t_parallel > 0 else float("inf")
 
 
 class DiffusionGPRBenchmark:
