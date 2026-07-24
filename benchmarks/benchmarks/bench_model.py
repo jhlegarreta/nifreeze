@@ -46,7 +46,7 @@ class _DKIBaseBenchmark:
     Not collected directly by ASV (no time_/track_ methods required by users).
     """
 
-    params = ([5000, 10000, 20000], [1, min(8, cpu_count())])
+    params = ([1000, 2000, 5000], [1, 2, min(4, cpu_count())])
     param_names = ["n_voxels", "n_jobs"]
 
     _WARMUP_RUNS = 1
