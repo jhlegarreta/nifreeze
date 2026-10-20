@@ -23,7 +23,6 @@
 """Models for nuclear imaging."""
 
 from abc import ABC, ABCMeta, abstractmethod
-from os import cpu_count
 from typing import Union
 
 import numpy as np
@@ -181,7 +180,6 @@ class BSplinePETModel(BasePETModel):
         "_t": "B-Spline knot time-coordinates",
         "_order": "B-Spline order",
         "_n_ctrl": "Number of B-Spline control points",
-        "_coefficients": "Cached B-Spline coefficients for a locked fit",
     }
 
     def __init__(
@@ -226,35 +224,19 @@ class BSplinePETModel(BasePETModel):
         # Time-coordinates of the B-Spline knots
         self._t = _build_bspline_knots(self._dataset.midframe, self._n_ctrl, self._order)
 
-        self._coefficients = None
+    def _fit(self, index: int | None = None) -> np.ndarray:
+        """Fit the B-spline coefficients of every voxel, leaving frame ``index`` out.
 
-    def fit_predict(self, index: int | None = None, **kwargs) -> Union[np.ndarray, None]:
-        """Return the corrected volume using B-spline interpolation.
+        Returns
+        -------
+        :obj:`~numpy.ndarray`
+            The ``(V, C)`` coefficients of ``V`` voxels on ``C`` basis functions.
 
-        Predictions for times earlier than the configured start time will return
-        the prediction for the start time.
         """
-
-        n_jobs = kwargs.pop("n_jobs", min(cpu_count() or 1, 8))
-
         # Generate a time mask for the frames to fit
         x_mask = np.ones(len(self._dataset), dtype=bool)
-        if self._locked_fit is None:
-            if index is None:
-                self._locked_fit = True
-            else:
-                # First call in LOVO mode: initialize as unlocked
-                self._locked_fit = False
-                x_mask[index] = False
-        elif index is None:
-            return None
-        elif self._locked_fit:
-            # Already fit on all frames; for held-out prediction keep full-fit mask
-            pass
-        else:
-            # Unlocked LOVO mode
+        if index is not None:
             x_mask[index] = False
-
         x = self._dataset.midframe[x_mask].tolist()
 
         # A.shape = (T, K - 4); t= n. timepoints, K= n. knots (with padding)
@@ -267,31 +249,40 @@ class BSplinePETModel(BasePETModel):
             else self._dataset.dataobj[self._dataset.brainmask, :]
         )
 
-        if self._coefficients is None:
-            X = la.lstsq(
-                A.toarray().astype("float64"),
-                data[:, x_mask].T.astype("float64"),
-                cond=None,
-                lapack_driver="gelsd",
-            )
-            coefficients = X[0].T.astype("float32")
-            if self._locked_fit:
-                self._coefficients = coefficients
-        else:
-            coefficients = self._coefficients
+        X = la.lstsq(
+            A.toarray().astype("float64"),
+            data[:, x_mask].T.astype("float64"),
+            cond=None,
+            lapack_driver="gelsd",
+        )
+        return X[0].T.astype("float32")
 
-        # Generate an interpolation time mask
-        interp_mask = np.zeros(len(self._dataset), dtype=bool)
-        interp_index = index if index is not None else slice(0, len(interp_mask))
-        interp_mask[interp_index] = True
+    def fit_predict(self, index: int | None = None, **kwargs) -> Union[np.ndarray, None]:
+        """Return the corrected volume using B-spline interpolation.
+
+        In LOVO mode, the coefficients are fit on every frame but ``index``. With
+        ``index=None`` (single-fit mode), they are fit once on all frames and locked:
+        later calls predict from them without refitting, so the predicted frame is
+        part of the fit. A least-squares fit with fewer basis functions than frames
+        does not reproduce its input, so single-fit predictions are not a canary.
+
+        Predictions for times earlier than the configured start time will return
+        the prediction for the start time.
+        """
+        if index is None:
+            if self._locked_fit is None:
+                self._locked_fit = self._fit()
+                self._warn_single_fit_canary()
+            return None
+
+        coefficients = self._locked_fit if self._locked_fit is not None else self._fit(index)
 
         A = BSpline.design_matrix(
-            self._dataset.midframe[interp_mask], self._t, k=self._order, extrapolate=False
+            self._dataset.midframe[[index]], self._t, k=self._order, extrapolate=False
         )
 
-        # A is T (num. timepoints) x C (num. coeff)
-        # coefficients is V (num. voxels) x C (num. coeff)
-        predicted = np.squeeze(A @ coefficients.T).T
+        # A is 1 x C (num. coeff); coefficients is V (num. voxels) x C
+        predicted = np.squeeze(A @ coefficients.T)
 
         brainmask = self._dataset.brainmask
         datashape = self._dataset.dataobj.shape[:3]
@@ -299,6 +290,6 @@ class BSplinePETModel(BasePETModel):
         if brainmask is None:
             return predicted.reshape(datashape)
 
-        retval = np.squeeze(np.zeros_like(self._dataset.dataobj[..., interp_mask]))
+        retval = np.zeros(datashape, dtype=self._dataset.dataobj.dtype)
         retval[brainmask] = predicted
         return retval
