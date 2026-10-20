@@ -160,6 +160,14 @@ class BaseModel(ABC):
             If :obj:`None`, single-fit mode is used and no held-out prediction is
             produced.
 
+        Returns
+        -------
+        :obj:`~numpy.ndarray` or :obj:`None`
+            The predicted volume at ``index``. In single-fit mode, :obj:`None`,
+            except for models whose prediction does not depend on the index
+            (such as :obj:`~nifreeze.model.base.ExpectationModel`), which return
+            that prediction.
+
         """
         return None
 
